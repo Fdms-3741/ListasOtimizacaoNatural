@@ -1,3 +1,4 @@
+from pathlib import Path
 import time as tm 
 import json 
 
@@ -6,134 +7,110 @@ import pandas as pd
 import matplotlib.pyplot as plt 
 
 from visualizacoes import PlotPontosTSP, PlotResultadoSA
-from generate_tsp import GerarProblemaTSP
+from generate_tsp import GerarProblemaRadialTSP, GerarProblemaRetangularTSP
+from sa_tsp import SimulatedAnnealingTSP, Custo
 
+def ExperimentoTSP(posicoes,K,N,T0,epsilon,valorOtimo=None):
 
-def Pertubacao(x,epsilon=1):
-    xnew = x.copy()
-    for i in range(epsilon):
-        origem = np.random.randint(0,x.shape[0])
-        destino = origem
-        while destino == origem:
-            destino = np.random.randint(0,x.shape[0])
-        xnew[origem],xnew[destino] = (xnew[destino],xnew[origem])
-    return xnew
+    # Calcula solução e custo da solução
+    x0 = np.arange(posicoes.shape[1])
 
-def Custo(x,posicoes):
-    origem  = posicoes[:,x][:,:-1]
-    destino = posicoes[:,x][:,1:]
-    return np.sum(np.linalg.norm(destino-origem,axis=0))
-
-
-def SimulatedAnnealingTSP(x,posicoes,Custo,Pertubacao,K=6,N=100000,T0=10,epsilon=1,passoGravacao=100):
-
-    jx = Custo(x,posicoes)
-    xmin = x
-    jmin = jx
-
-    jhist = np.zeros(K*N//passoGravacao)
-    xhist = np.zeros((K*N//passoGravacao,*x.shape))
-    # Tempos em diferentes partes do código
-    mediaCusto = np.zeros(K*N//passoGravacao)
-    mediaPertubacao = np.zeros(K*N//passoGravacao)
-    mediaPasso = np.zeros(K*N//passoGravacao)
-    mediaTemperatura = np.zeros(K)
-    somaPertubacao = 0
-    somaCusto = 0
-    
-    histTransicao = {}
-    histTransicao['k'] = []
-    histTransicao['jmin'] = []
-    histTransicao['jx'] = []
-    histTransicao['xmin'] = []
-    histTransicao['x'] = []
-
-
-    start_time = tm.time()
-    for k in range(K):
-        T = T0/np.log2(2+k)
-        temperatura_inicio = tm.time()
-        passo_inicio = tm.time()
-        for n in range(N):
-            # Pertuba e soma o tempo
-            pertubacao_inicio = tm.time()
-            xhat = Pertubacao(x,epsilon)
-            somaPertubacao += tm.time() - pertubacao_inicio
-            
-            # Calcula o custo e soma o tempo
-            custo_inicio = tm.time()
-            jhat = Custo(x,posicoes)
-            somaCusto += tm.time() - custo_inicio
-
-            # Decisão de mudança de estado
-            if np.random.uniform(0,1) < np.exp((jx-jhat)/T):
-                x = xhat
-                jx = jhat
-                if jx < jmin:
-                    xmin = x
-                    jmin = jx
-
-            # Histórico dos passos
-            if (n%passoGravacao)==0:
-                # Média do passo
-                mediaPasso[(k*N+n)//passoGravacao] = (tm.time() - passo_inicio)/passoGravacao
-                passo_inicio = tm.time()
-                # Salva espaço e custo atual
-                jhist[(k*N+n)//passoGravacao] = jx 
-                xhist[(k*N+n)//passoGravacao] = x
-                # Tempos médios nas funções custosas
-                mediaCusto[(k*N+n)//passoGravacao] = somaCusto/passoGravacao
-                mediaPertubacao[(k*N+n)//passoGravacao] = somaPertubacao/passoGravacao
-        mediaTemperatura[k] = tm.time() - temperatura_inicio
-        print(k,xhat,jhat)
-        histTransicao['k'].append(k)
-        histTransicao['jmin'].append(jmin)
-        histTransicao['jx'].append(jx)
-        histTransicao['xmin'].append(xmin.tolist())
-        histTransicao['x'].append(x.tolist())
-
-    end_time = tm.time()
-            
-
-    return xmin, jmin, jhist, xhist, end_time - start_time, np.mean(mediaCusto), np.mean(mediaPertubacao), np.mean(mediaPasso), np.mean(mediaTemperatura),histTransicao
-
-def ExperimentoTSP(tamanho,K,N,T0,epsilon):
-    posicoes = GerarProblemaTSP(tamanho,3)
-
-    
-    x0 = np.arange(tamanho)
     np.random.shuffle(x0)
     
-    xmin,jmin,jhist,xhist,tempoTotal, mediaCusto, mediaPertubacao, mediaPasso, mediaTemperatura, histTransicao = SimulatedAnnealingTSP(x0,posicoes,Custo,Pertubacao,K,N,T0,epsilon)
+    xmin,jmin,jhist,thist,tempoTotal, histTransicao, parada = SimulatedAnnealingTSP(x0,posicoes,K,N,T0,epsilon,valorOtimo)
     
     resultados = {}
     resultados['Parâmetros'] = {}
-    resultados['Parâmetros']['Número de cidades'] = tamanho
     resultados['Parâmetros']['K'] = K
     resultados['Parâmetros']['N'] = N 
     resultados['Parâmetros']['T0'] = T0 
     resultados['Parâmetros']['epsilon'] = epsilon
+    resultados['Parâmetros']['Posições'] = posicoes
 
     resultados['Resultados'] = {}
-    resultados['Resultados']['X'] = xmin.tolist()
+    resultados['Resultados']['X'] = xmin
     resultados['Resultados']['J'] = jmin
+    resultados['Resultados']['Condição de parada'] = parada
     resultados['Resultados']['Tempos'] = {}
     resultados['Resultados']['Tempos']['Total'] = tempoTotal 
-    resultados['Resultados']['Tempos']['Custo'] = mediaCusto
-    resultados['Resultados']['Tempos']['Pertubação'] = mediaPertubacao
-    resultados['Resultados']['Tempos']['Passo'] = mediaPasso
-    resultados['Resultados']['Tempos']['Temperatura'] = mediaTemperatura
 
-    
     resultados['Histórico'] = {}
-    resultados['Histórico']['X inicial'] = x0.tolist()
-    resultados['Histórico']['J'] = jhist.tolist()
-    resultados['Histórico']['X'] = xhist.tolist()
+    resultados['Histórico']['X inicial'] = x0
+    resultados['Histórico']['J'] = jhist
+    resultados['Histórico']['T'] = thist
     resultados['Histórico']['Transições'] = histTransicao
     
     return resultados
 
+def ExperimentoRadialTSP(tamanho,K,N,T0,epsilon):
+    posicoes = GerarProblemaRadialTSP(tamanho)
+    valorOtimo = Custo(np.arange(posicoes.shape[1]),posicoes)
+    resultado = ExperimentoTSP(posicoes, K, N, T0, epsilon, valorOtimo)
+    resultado['Histórico']['Valor ótimo'] = valorOtimo
+    return resultado 
+
+def ExperimentoRetangularTSP(ladoCentros, cidades, K,N,T0,epsilon):
+    posicoes = GerarProblemaRetangularTSP(ladoCentros, cidades)
+    resultado =  ExperimentoTSP(posicoes, K, N, T0, epsilon)
+    resultado['Histórico']['Valor ótimo'] = None
+    return resultado
+
 if __name__ == "__main__":
-    resultados = ExperimentoTSP(5,6,100,10,1)
-    with open('resultado.json','w') as fil:
-        json.dump(resultados,fil)
+    
+    ladoCentros = 4
+    cidadesCentros = 3
+    tamanho = (ladoCentros**2)*cidadesCentros
+    K = 40
+    N = 10**5
+    T0 = 30
+    epsilon = 1
+
+    #resultados = ExperimentoRetangularTSP(ladoCentros,cidadesCentros, K, N, T0, epsilon)
+    resultados = ExperimentoRadialTSP(tamanho, K, N, T0, epsilon)
+    
+    # Salva resultados 
+    #arquivoResultado = Path('resultado.json')
+    #with arquivoResultado.open('w') as fil:
+    #    json.dump(resultados,fil)
+
+    # Mostrar resultados 
+    posicoes =  np.array(resultados['Parâmetros']['Posições'])
+    PlotPontosTSP(posicoes)
+    plt.show()
+    PlotResultadoSA(np.array(resultados['Histórico']['X inicial']),posicoes)
+    plt.show()
+    PlotResultadoSA(np.array(resultados['Resultados']['X']),posicoes)
+    plt.show()
+    fig,ax = plt.subplots(1,2)
+    ax[0].plot(resultados['Histórico']['J'][:np.argwhere(np.abs(resultados['Histórico']['J'])<1e-10)[0][0]])
+    ax[1].plot(resultados['Histórico']['T'][:np.argwhere(np.abs(resultados['Histórico']['J'])<1e-10)[0][0]])
+    plt.show()
+    print('Custo mínimo:', resultados['Histórico']['Valor ótimo']) 
+    print('Custo inicial:', Custo(resultados['Histórico']['X inicial'],posicoes)) 
+    print('Custo calculado:', Custo(resultados['Resultados']['X'],posicoes)) 
+    print('Custo obtido:', resultados['Resultados']['J']) 
+    exit()
+
+if __name__ == "__main__":
+    
+    with open('experimentos.json') as fil:
+        experiments = json.load(fil)
+    
+    inicio = np.ceil(tm.time())
+    idx = -1
+
+    for tamanho,N,T,K,epsilon in experiments:
+        idx += 1
+        arquivoResultado = Path(f'resultado_{idx}.json') 
+        if arquivoResultado.exists():
+            continue
+        print(tamanho,N,T,K,epsilon)
+
+        resultados = ExperimentoTSP(tamanho,K,N,T,epsilon)
+        resultados['Descrição'] = {}
+        resultados['Descrição']['Data/Hora'] = inicio
+        resultados['Descrição']['indice'] = idx 
+        
+        with arquivoResultado.open('w') as fil:
+            json.dump(resultados,fil)
+
