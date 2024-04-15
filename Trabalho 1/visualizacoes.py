@@ -26,3 +26,5 @@ def PlotResultadoSA(x,posicoes,fig=None,ax=None):
     ax.plot(dados[0,:],dados[1,:], '.r-',markersize=20) 
     
     return fig,ax
+
+
