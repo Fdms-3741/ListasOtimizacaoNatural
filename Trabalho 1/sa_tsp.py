@@ -7,6 +7,7 @@
 import time as tm 
 import numpy as np
 
+
 def PertubacaoSwitch(x,epsilon=1):
     xnew = x.copy()
     numPosicoes = np.ceil(np.abs(np.random.normal(0,epsilon))).astype(np.int64)
