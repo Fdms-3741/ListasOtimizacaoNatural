@@ -17,6 +17,8 @@ def PertubacaoSwitch(x,epsilon=1):
         while destino == origem:
             destino = np.random.randint(0,x.shape[0])
         xnew[origem],xnew[destino] = (xnew[destino],xnew[origem])
+    assert xnew.shape == x.shape, f"Falta de elementos. {xnew.shape} e {x.shape}" 
+    assert np.unique(xnew).shape[0] == x.shape[0], f"Elementos repetidos: {xnew}"
     return xnew
 
 def PertubacaoFlip(x,epsilon=1):
@@ -25,6 +27,8 @@ def PertubacaoFlip(x,epsilon=1):
     fim = inicio+tamanho
     xnew = x.copy()
     xnew[inicio:fim] = np.flip(xnew[inicio:fim])
+    assert xnew.shape == x.shape, f"Falta de elementos. {xnew.shape} e {x.shape}" 
+    assert np.unique(xnew).shape[0] == x.shape[0], f"Elementos repetidos: {xnew}"
     return xnew
 
 def PertubacaoCut(x,epsilon=1):
@@ -45,12 +49,18 @@ def PertubacaoSwitchNeighbor(x,epsilon=1):
     xnew = x.copy()
     pos = np.random.randint(x.shape[0]-1)
     xnew[pos],xnew[pos+1] = xnew[pos+1],xnew[pos]
+    assert xnew.shape == x.shape, f"Falta de elementos. {xnew.shape} e {x.shape}" 
+    assert np.unique(xnew).shape[0] == x.shape[0], f"Elementos repetidos: {xnew}"
     return xnew
 
 def PertubacaoLin(x,epsilon=1):
     xnew = x.copy()
-    xnew = PertubacaoFlip(xnew)
-    xnew = PertubacaoCut(xnew)
+    if np.random.randint(0,2) == 0:
+        xnew = PertubacaoFlip(xnew)
+    else: 
+        xnew = PertubacaoCut(xnew)
+    assert xnew.shape == x.shape, f"Falta de elementos. {xnew.shape} e {x.shape}" 
+    assert np.unique(xnew).shape[0] == x.shape[0], f"Elementos repetidos: {xnew}"
     return xnew 
 
 Pertubacao = PertubacaoLin
@@ -61,7 +71,7 @@ def Custo(x,posicoes):
     return np.sum(np.linalg.norm(destino-origem,axis=0))
 
 
-def SimulatedAnnealingTSP(x,posicoes,K=6,N=100000,T0=10,epsilon=1,resultado=None):
+def SimulatedAnnealingTSP(x,posicoes,K=6,N=100000,T0=10,epsilon=1,resultado=None,Custo=Custo,Pertubacao=Pertubacao):
     
     passoGravacao = N //1000
     jx = Custo(x,posicoes)
@@ -69,15 +79,10 @@ def SimulatedAnnealingTSP(x,posicoes,K=6,N=100000,T0=10,epsilon=1,resultado=None
     jmin = jx.copy()
 
     jhist = np.zeros(K*N)
+    jminhist = np.zeros(K*N)
     thist = np.zeros(K*N)
-    # Tempos em diferentes partes do código
-    mediaCusto = np.zeros(K*N//passoGravacao)
-    mediaPertubacao = np.zeros(K*N//passoGravacao)
-    mediaPasso = np.zeros(K*N//passoGravacao)
-    mediaTemperatura = np.zeros(K)
-    somaPertubacao = 0
-    somaCusto = 0
-    
+    exphist = np.zeros(K*N)
+
     histTransicao = {}
     histTransicao['k'] = []
     histTransicao['jmin'] = []
@@ -85,42 +90,40 @@ def SimulatedAnnealingTSP(x,posicoes,K=6,N=100000,T0=10,epsilon=1,resultado=None
     histTransicao['xmin'] = []
     histTransicao['x'] = []
     
-    print(x,jx)
-    jAnterior = jx + 1
-
     parada = False
     semMudanca = 0 
     start_time = tm.time()
+    # 
     for k in range(K):
         T = T0/np.log2(2+k)
-        #T = (0.9**k)*T0    
-    
+        #T = (0.99**k)*T0    
         for n in range(N):
             # Pertuba e soma o tempo
             xhat = Pertubacao(x,epsilon)
-            
             # Calcula o custo e soma o tempo
-            jhat = Custo(x,posicoes)
-
+            jhat = Custo(xhat,posicoes)
+            aceitacao = np.min([1.00001, np.exp((jx-jhat)/T)])
             # Decisão de mudança de estado
-            if np.random.uniform(0,1) < np.exp((jx-jhat)/T):
+            if np.random.uniform(0,1) < aceitacao:
                 semMudanca = 0
-                x = xhat.copy()
+                x = xhat
                 jx = jhat
                 if jx < jmin:
-                    xmin = x.copy()
+                    xmin = x
                     jmin = jx
                     if resultado and np.abs(jmin-resultado) < 1e-10:
                         parada = "Ótimo encontrado"
                         break
             else:
                 semMudanca += 1
-                if semMudanca == 100000:
-                    parada = True
-                    break
+                #if semMudanca == 100000: # Sistema congelado
+                #    parada = True
+                #    break
 
             jhist[(k*N+n)] = jx
+            jminhist[(k*N+n)] = jmin
             thist[(k*N+n)] = T
+            exphist[(k*N+n)] = aceitacao
 
         print(k,T,xmin,jmin)
         histTransicao['k'].append(k)
@@ -136,4 +139,4 @@ def SimulatedAnnealingTSP(x,posicoes,K=6,N=100000,T0=10,epsilon=1,resultado=None
     if not parada:
         parada = "Fim da execução"
 
-    return xmin, jmin, jhist, thist, end_time - start_time, histTransicao, parada
+    return xmin, jmin, jhist, thist, jminhist, exphist, end_time - start_time, histTransicao, parada

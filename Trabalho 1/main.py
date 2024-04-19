@@ -1,59 +1,85 @@
-from pathlib import Path
-import time as tm 
 import json 
+import time as tm 
+from pathlib import Path
+from itertools import product
 
 import numpy as np
 import pandas as pd 
 import matplotlib.pyplot as plt 
 
+from sa_tsp import SimulatedAnnealingTSP, Custo, PertubacaoSwitch, PertubacaoLin
 from visualizacoes import PlotPontosTSP, PlotResultadoSA
 from generate_tsp import GerarProblemaRadialTSP, GerarProblemaRetangularTSP
-from sa_tsp import SimulatedAnnealingTSP, Custo
+from find_temperature import EncontrarTemperatura
 
-def ExperimentoTSP(posicoes,K,N,T0,epsilon,valorOtimo=None):
-
-    # Calcula solução e custo da solução
-    x0 = np.arange(posicoes.shape[1])
-
-    np.random.shuffle(x0)
-    
-    xmin,jmin,jhist,thist,tempoTotal, histTransicao, parada = SimulatedAnnealingTSP(x0,posicoes,K,N,T0,epsilon,valorOtimo)
-    
+def IterarExperimentos(posicoes,K,N,T0,epsilon,valorOtimo=[None],Pertubacoes=[PertubacaoLin]):
     resultados = {}
-    resultados['Parâmetros'] = {}
-    resultados['Parâmetros']['K'] = K
-    resultados['Parâmetros']['N'] = N 
-    resultados['Parâmetros']['T0'] = T0 
-    resultados['Parâmetros']['epsilon'] = epsilon
-    resultados['Parâmetros']['Posições'] = posicoes
-
-    resultados['Resultados'] = {}
-    resultados['Resultados']['X'] = xmin
-    resultados['Resultados']['J'] = jmin
-    resultados['Resultados']['Condição de parada'] = parada
-    resultados['Resultados']['Tempos'] = {}
-    resultados['Resultados']['Tempos']['Total'] = tempoTotal 
-
-    resultados['Histórico'] = {}
-    resultados['Histórico']['X inicial'] = x0
-    resultados['Histórico']['J'] = jhist
-    resultados['Histórico']['T'] = thist
-    resultados['Histórico']['Transições'] = histTransicao
+    posicoes = [posicoes] if type(posicoes)!=list else posicoes
+    # Conversão pra listas
+    K = [K] if type(K)!=list else K
+    N = [N] if type(N)!=list else N
+    T0 = [T0] if type(T0)!=list else T0
+    epsilon = [epsilon] if type(epsilon)!=list else epsilon
+    valorOtimo = [valorOtimo] if type(valorOtimo)!=list else valorOtimo
+    Pertubacoes = [Pertubacoes] if type(Pertubacoes)!=list else Pertubacoes
+    # Iteração entre diferentes experimentos
+    for posicao, K, N, T0, epsilon, valorOtimo, Pertubacao in product(posicoes,K,N,T0,epsilon,valorOtimo,Pertubacoes):
+        print(f"Expr: K={K}; N={N}; T0={T0}; epsilon={epsilon}, posicao={posicao.shape}, valorOtimo={valorOtimo}, Pertubacao={Pertubacao}")
+        # Execução do experimento
+        resultado = ExperimentoTSP(posicao,K,N,T0,epsilon,valorOtimo,Pertubacao=Pertubacao)
+        # Concatenação do resultado
+        for key in resultado.keys():
+            if key in resultados.keys():
+                resultados[key].append(resultado[key])
+            else:
+                resultados[key] = [resultado[key]]
     
     return resultados
 
-def ExperimentoRadialTSP(tamanho,K,N,T0,epsilon):
+def ExperimentoTSP(posicoes,K,N,T0,epsilon,valorOtimo=None,Pertubacao=PertubacaoLin):
+    # Calcula solução e custo da solução
+    x0 = np.arange(posicoes.shape[1])
+    j0 = Custo(x0,posicoes)
+
+    np.random.shuffle(x0)
+    
+    xmin,jmin,jhist,thist,jminhist, exphist, tempoTotal, histTransicao, parada = SimulatedAnnealingTSP(x0,posicoes,K,N,T0,epsilon,valorOtimo,Pertubacao=Pertubacao)
+    
+    resultados = {}
+    resultados['K'] = K
+    resultados['N'] = N 
+    resultados['$T_0$'] = T0 
+    resultados['$\epsilon$'] = epsilon
+    resultados['Posições'] = posicoes
+    resultados['Valor ótimo'] = valorOtimo
+    resultados['X'] = xmin
+    resultados['J'] = jmin
+    resultados['Condição de parada'] = parada
+    resultados['Total'] = tempoTotal 
+
+    resultados['$X_0$'] = x0
+    resultados['$J_0$'] = j0
+    resultados['Evolução J'] = jhist
+    resultados['Evolução T'] = thist
+    resultados['Evolução $J_{min}$'] = jminhist
+    resultados['Evolução aceitação'] = exphist
+    resultados['Transições'] = histTransicao
+    
+    return resultados
+
+def ExperimentoRadialTSP(tamanho,K,N,T0,epsilon,Pertubacao=PertubacaoLin):
     posicoes = GerarProblemaRadialTSP(tamanho)
     valorOtimo = Custo(np.arange(posicoes.shape[1]),posicoes)
-    resultado = ExperimentoTSP(posicoes, K, N, T0, epsilon, valorOtimo)
-    resultado['Histórico']['Valor ótimo'] = valorOtimo
-    return resultado 
+    resultados = IterarExperimentos([posicoes],K,N,T0,epsilon,valorOtimo=valorOtimo,Pertubacoes=Pertubacao)
+    return resultados
 
 def ExperimentoRetangularTSP(ladoCentros, cidades, K,N,T0,epsilon):
     posicoes = GerarProblemaRetangularTSP(ladoCentros, cidades)
-    resultado =  ExperimentoTSP(posicoes, K, N, T0, epsilon)
-    resultado['Histórico']['Valor ótimo'] = None
-    return resultado
+    valorOtimo = None 
+    resultados = IterarExperimentos([posicoes],K,N,T0,epsilon,valorOtimo=valorOtimo)
+
+    return resultados
+
 
 if __name__ == "__main__":
     
@@ -61,56 +87,13 @@ if __name__ == "__main__":
     cidadesCentros = 3
     tamanho = (ladoCentros**2)*cidadesCentros
     K = 40
-    N = 10**5
-    T0 = 30
+    N = 10**4
+    T0 = 1
     epsilon = 1
 
-    #resultados = ExperimentoRetangularTSP(ladoCentros,cidadesCentros, K, N, T0, epsilon)
-    resultados = ExperimentoRadialTSP(tamanho, K, N, T0, epsilon)
+    resultados = ExperimentoRetangularTSP(ladoCentros,cidadesCentros, K, N, T0, epsilon)
+    #resultados = ExperimentoRadialTSP(tamanho, K, N, T0, epsilon,PertubacaoLin)
+    resultados = pd.DataFrame(resultados)
     
-    # Salva resultados 
-    #arquivoResultado = Path('resultado.json')
-    #with arquivoResultado.open('w') as fil:
-    #    json.dump(resultados,fil)
-
-    # Mostrar resultados 
-    posicoes =  np.array(resultados['Parâmetros']['Posições'])
-    PlotPontosTSP(posicoes)
-    plt.show()
-    PlotResultadoSA(np.array(resultados['Histórico']['X inicial']),posicoes)
-    plt.show()
-    PlotResultadoSA(np.array(resultados['Resultados']['X']),posicoes)
-    plt.show()
-    fig,ax = plt.subplots(1,2)
-    ax[0].plot(resultados['Histórico']['J'][:np.argwhere(np.abs(resultados['Histórico']['J'])<1e-10)[0][0]])
-    ax[1].plot(resultados['Histórico']['T'][:np.argwhere(np.abs(resultados['Histórico']['J'])<1e-10)[0][0]])
-    plt.show()
-    print('Custo mínimo:', resultados['Histórico']['Valor ótimo']) 
-    print('Custo inicial:', Custo(resultados['Histórico']['X inicial'],posicoes)) 
-    print('Custo calculado:', Custo(resultados['Resultados']['X'],posicoes)) 
-    print('Custo obtido:', resultados['Resultados']['J']) 
-    exit()
-
-if __name__ == "__main__":
-    
-    with open('experimentos.json') as fil:
-        experiments = json.load(fil)
-    
-    inicio = np.ceil(tm.time())
-    idx = -1
-
-    for tamanho,N,T,K,epsilon in experiments:
-        idx += 1
-        arquivoResultado = Path(f'resultado_{idx}.json') 
-        if arquivoResultado.exists():
-            continue
-        print(tamanho,N,T,K,epsilon)
-
-        resultados = ExperimentoTSP(tamanho,K,N,T,epsilon)
-        resultados['Descrição'] = {}
-        resultados['Descrição']['Data/Hora'] = inicio
-        resultados['Descrição']['indice'] = idx 
-        
-        with arquivoResultado.open('w') as fil:
-            json.dump(resultados,fil)
-
+    # Salva os resultados 
+    resultados.to_pickle(f'resultados.pickle')
