@@ -1,3 +1,4 @@
+import re
 from re import search 
 from pathlib import Path 
 
@@ -28,8 +29,8 @@ def LerArquivo(nome):
             data[termos[0].replace(' ','')] = termos[1]
     return data
 
-def LerResultado(nomeResultado):
-    with open('solutions') as fd:
+def LerResultado(nomeResultado,solutionsPath='./tsplib/solutions'):
+    with open(solutionsPath) as fd:
         while True:
             try:
                 nomeArquivo, solucao = fd.readline().split(' : ')
@@ -38,9 +39,9 @@ def LerResultado(nomeResultado):
             if nomeArquivo == nomeResultado:
                 return float(solucao)
 
-def GetProblemsDataFrame():
+def GetProblemsDataFrame(problemPath='.'):
     results = []
-    for file in Path('.').iterdir():   
+    for file in Path(problemPath).iterdir():   
         if not (res := LerArquivo(file)) is None:
             results.append(res)
 
@@ -52,11 +53,11 @@ def GetProblemsDataFrame():
     results['OPTIMAL_VALUE'] = np.nan
     return results
 
-def GetParametersProblem(name):
+def GetParametersProblem(name,sourceDir='./tsplib/'):
 
     results = []
     # Verifica se o arquivo existe
-    if (file := Path(name+".tsp")).exists():
+    if (file := Path(sourceDir+name+".tsp")).exists():
         # Abre o arquivo
         with file.open() as fd:
             data = False # Indica que está lendo uma linha de dados
@@ -78,10 +79,12 @@ def GetParametersProblem(name):
                 
                 # Escreve os dados na matriz
                 if data:
-                    print(f"'{input}'")
-                    _,x,y = input.split(' ')
+                    input = re.sub('^\s+','',input,count=1)
+                    print(f'{input}')
+                    idStr, x, y = re.sub('\s+',',',input).split(',')
                     results.append(np.array([float(x),float(y)]))
                     idx += 1
+                    
 
         results = np.stack(results)
     else:
@@ -89,9 +92,10 @@ def GetParametersProblem(name):
     
     return results
 
-if __name__ == "__main__":
-    
-    results = GetProblemsDataFrame()
+def GerarProblemaTSPLIB(indice):
+    # Le as características do problema em tsplib
+    results = GetProblemsDataFrame('./tsplib/')
+    # Filtra resultados pelo tipo euclidiano
     results = results[results['EDGE_WEIGHT_TYPE']=='EUC_2D']
     results = results.groupby('ORDER').apply(lambda x: x.iloc[0])
     results = results.set_index('NAME')
@@ -99,6 +103,6 @@ if __name__ == "__main__":
     for i in results.index:
         valorOtimo = LerResultado(i)
         results.at[i,'OPTIMAL_VALUE'] = valorOtimo
+    # Retorna pd.Series com características do problema e np.array com dimensões do problema
+    return results.iloc[indice], GetParametersProblem(results.index[indice])
 
-    print(results[['DIMENSION','OPTIMAL_VALUE']])
-    print(GetParametersProblem(results.index[0]))

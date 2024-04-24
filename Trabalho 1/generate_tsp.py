@@ -22,7 +22,6 @@ def GerarProblemaRetangularTSP(numeroFocos,cidadesFoco,lado=20):
     
     return result.T 
 
-def LerProblemaTSPLIB(nome):
 
 
 if __name__ == "__main__":

@@ -72,67 +72,74 @@ def Custo(x,posicoes):
     return np.sum(np.linalg.norm(destino-origem,axis=0))
 
 
-def SimulatedAnnealingTSP(x,posicoes,K=6,N=100000,T0=10,epsilon=1,resultado=None,Custo=Custo,Pertubacao=Pertubacao):
+def SimulatedAnnealingTSP(x,posicoes,K=6,N=100000,T0=10,epsilon=1,resultado=None,gap=None,Custo=Custo,Pertubacao=Pertubacao):
     
-    passoGravacao = N //1000
+    passo = N //1000
     jx = Custo(x,posicoes)
     xmin = x.copy()
     jmin = jx.copy()
-
-    jhist = np.zeros(K*N)
-    jminhist = np.zeros(K*N)
-    thist = np.zeros(K*N)
-    exphist = np.zeros(K*N)
-
-    histTransicao = {}
-    histTransicao['k'] = []
-    histTransicao['jmin'] = []
-    histTransicao['jx'] = []
-    histTransicao['xmin'] = []
-    histTransicao['x'] = []
     
-    parada = False
+    # Histórico detalhado para gráficos
+    jhist = np.zeros(K*N//passo)
+    jminhist = np.zeros(K*N//passo)
+    thist = np.zeros(K*N//passo)
+    exphist = np.zeros(K*N//passo)
+
+    # Salva os passos de T, jmin e jx nas transições de temperatura
+    histTransicao = np.zeros((K,5))
+
+    # Salva a média dos tempos de execução
+    tempos = np.zeros((K,3))
+
+    # Condição de parada
+    parada = None
     semMudanca = 0 
     start_time = tm.time()
-    # 
+    
     for k in range(K):
         T = T0/np.log2(2+k)
         #T = (0.99**k)*T0    
+        custoTime = 0
+        pertubacaoTime = 0
+        contagemAceitacao = 0
         for n in range(N):
             # Pertuba e soma o tempo
+            pertubacaoStart = tm.time()
             xhat = Pertubacao(x,epsilon)
+            pertubacaoTime = (pertubacaoTime*(n)+tm.time())/(n+1)
             # Calcula o custo e soma o tempo
+            custoStart = tm.time()
             jhat = Custo(xhat,posicoes)
+            custoTime = (custoTime*(n)+tm.time())/(n+1)# Calcula a média do tempo na função de custo
+            # Calcula aceitação do modelo
             aceitacao = np.min([1.00001, np.exp((jx-jhat)/T)])
             # Decisão de mudança de estado
             if np.random.uniform(0,1) < aceitacao:
                 semMudanca = 0
+                contagemAceitacao += 1
                 x = xhat
                 jx = jhat
                 if jx < jmin:
                     xmin = x
                     jmin = jx
-                    if resultado and np.abs(jmin-resultado) < 1e-10:
-                        parada = "Ótimo encontrado"
+                    if resultado and np.abs(jmin/resultado) > gap:
+                        parada = "Ótimo encontrado" if np.abs(jmin-resultado) < 1e-10 else "Gap mínimo alcançado"
                         break
             else:
                 semMudanca += 1
-                #if semMudanca == 100000: # Sistema congelado
-                #    parada = True
-                #    break
+                if semMudanca == 100000: # Sistema congelado
+                    parada = "Sistema congelado"
+                    break
+            
+            if (n % passo) == 0:
+                jhist[(k*N+n)//passo] = jx
+                jminhist[(k*N+n)//passo] = jmin
+                thist[(k*N+n)//passo] = T
+                exphist[(k*N+n)//passo] = aceitacao
 
-            jhist[(k*N+n)] = jx
-            jminhist[(k*N+n)] = jmin
-            thist[(k*N+n)] = T
-            exphist[(k*N+n)] = aceitacao
-
-        print(k,T,xmin,jmin)
-        histTransicao['k'].append(k)
-        histTransicao['jmin'].append(jmin)
-        histTransicao['jx'].append(jx)
-        histTransicao['xmin'].append(xmin.tolist())
-        histTransicao['x'].append(x.tolist())
+        histTransicao[k,:] = [T,jmin,jx,contagemAceitacao/N,custoTime]
         
+
         if parada:
             break
     end_time = tm.time()
@@ -140,4 +147,4 @@ def SimulatedAnnealingTSP(x,posicoes,K=6,N=100000,T0=10,epsilon=1,resultado=None
     if not parada:
         parada = "Fim da execução"
 
-    return xmin, jmin, jhist, thist, jminhist, exphist, end_time - start_time, histTransicao, parada
+    return xmin, jmin, jhist, thist, jminhist, exphist, end_time - start_time, histTransicao, parada, tempos
