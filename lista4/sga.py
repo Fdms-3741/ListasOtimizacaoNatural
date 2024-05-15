@@ -16,6 +16,13 @@ class GeneticAlgorithm(EvolutionaryAlgorithm):
         self.sgaParams = ['populationSize','bitsSize','crossoverProbability','mutationProbability','numberOfSelectedParents','numberOfRecombinedOffspring']
         self.AddParameters(self.sgaParams,parameters)   
         self.GenerateIndividuals()
+        assert self.numberOfRecombinedOffspring <= self.populationSize**2
+        assert self.numberOfSelectedParents <= self.populationSize
+        assert self.crossoverProbability <= 1
+        assert self.crossoverProbability >= 0
+        assert self.mutationProbability <= 1
+        assert self.mutationProbability >= 0
+
 
     def SaveOptimumValue(self,aptitudeList,children):
         if (currentAptitude := np.max(aptitudeList)) > self.bestFitAptitude:
@@ -25,22 +32,20 @@ class GeneticAlgorithm(EvolutionaryAlgorithm):
     def GenerateIndividuals(self):
         self.individuals = np.random.choice([1,0],size=(self.populationSize,self.bitsSize))
 
-    def ParentSelection(self, aptitudeList):
+    def ParentSelection(self, individuals):
         """Selects from the aptitude list based on their probability."""
+        aptitudeList = self.CalculateAptitude(individuals)
         # Calculates probability based on aptitude results
         aptitudeProbabilityTerms = (aptitudeList-(np.min([np.min(aptitudeList),0]))+0.1)
         aptitudeProbability = aptitudeProbabilityTerms/np.sum(aptitudeProbabilityTerms)
-        print(aptitudeProbability)
         selectionIndex = np.random.choice(aptitudeList.shape[0],(self.numberOfSelectedParents,),p=aptitudeProbability,replace=False)
         # Assert that selection matches the number of parents
-        assert self.numberOfSelectedParents <= self.populationSize
-        assert selectionIndex.shape[0] == self.numberOfSelectedParents
-        return selectionIndex
+        return selectionIndex.astype(np.int64)
 
 
     def Recombination(self,individuals):
         pc = self.crossoverProbability
-        newIndividuals = individuals.copy()
+        resultIndividuals = np.zeros((self.numberOfRecombinedOffspring,self.bitsSize))
         # Selects a particular number of offsprings to emerge
         recombinationChoice = np.concatenate([
                 np.ones(self.numberOfRecombinedOffspring//2),
@@ -48,21 +53,39 @@ class GeneticAlgorithm(EvolutionaryAlgorithm):
             ])
         np.random.shuffle(recombinationChoice)
         recombinationChoice = recombinationChoice.reshape(individuals.shape[0],individuals.shape[0]).astype(np.int64)
-        for (parent1,parent2) in np.argwhere(recombinationChoice):
-            sliceSize = int(np.ceil(np.abs(np.random.normal(0,1))))
-            sliceStart = int(np.random.randint(0,individuals.shape[0]-sliceSize))
-            sliceEnd = sliceStart+sliceSize
-            if np.random.uniform(0,1) < pc:
-                newIndividuals[parent1,sliceStart:sliceEnd] = individuals[parent2,sliceStart:sliceEnd]
-                newIndividuals[parent2,sliceStart:sliceEnd] = individuals[parent1,sliceStart:sliceEnd]
-        return newIndividuals
+        for index,(parent1,parent2) in enumerate(np.argwhere(recombinationChoice)):
+            resultIndividuals[2*index:2*index+2,:] = self.RecombineParents(individuals[parent1],individuals[parent2])
+
+        return resultIndividuals.astype(np.int64)
+    
+    def RecombineParents(self,parent1,parent2):
+        resultIndividuals = np.zeros((2,self.bitsSize))
+
+        sliceSize = int(np.ceil(np.abs(np.random.normal(0,1))))
+        sliceStart = int(np.random.randint(0,parent1.shape[0]-sliceSize))
+        sliceEnd = sliceStart+sliceSize
+        
+        pc = self.crossoverProbability
+        # Parent definition
+        resultIndividuals[0] = parent1
+        resultIndividuals[1] = parent2
+        if np.random.uniform(0,1) < pc:
+            resultIndividuals[0,sliceStart:sliceEnd] = parent2[sliceStart:sliceEnd]
+            resultIndividuals[1,sliceStart:sliceEnd] = parent1[sliceStart:sliceEnd]
+        return resultIndividuals
+
+    def MutateIndividual(self,individual):
+        pm = self.mutationProbability
+        bitInversionMap = np.random.choice([1,0],p=[pm,1-pm],size=individual.shape)
+        return individual ^ bitInversionMap
 
     def Mutation(self,individuals):
         pm = self.mutationProbability
         mutationChoice = np.random.choice([1,0],p=[pm,1-pm],size=(individuals.shape[0],1))
-        bitInversionProbability = np.random.choice([1,0],p=[pm,1-pm],size=individuals.shape)
-        mutationMatrix = mutationChoice & bitInversionProbability
-        return individuals ^ mutationMatrix
+        for individualIndex in np.argwhere(mutationChoice):
+            individuals[individualIndex] = self.MutateIndividual(individuals[individualIndex])
+
+        return individuals 
 
     def Replacement(self,aptitudeList):
         aptitudeSort = pd.Series(aptitudeList)
