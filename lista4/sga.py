@@ -92,6 +92,22 @@ class GeneticAlgorithm(EvolutionaryAlgorithm):
         aptitudeSort = aptitudeSort.sort_values(ascending=False)
         return aptitudeSort.index[:self.populationSize]
 
+    def Report(self):
+        """
+        Gera um relatório para cada execução do algoritmo
+        """
+        report = {}
+        report['Creation time'] = float(self.creationTime)
+        report['Current execution'] = self.executeDuration
+        report['SGA Params'] = {}
+        for param in self.sgaParams:
+            report['SGA Params'][param] = float(getattr(self,param))
+        report['Results'] = {}
+        report["Results"]['Best Individual'] = [int(i) for i in self.bestFitIndividual]
+        #report['Results']['Best Individual value'] = float(self.CalculateFenotypes(self.bestFitIndividual[np.newaxis,:])[0])
+        report['Results']["Best aptitude"] = float(self.bestFitAptitude)
+        return report 
+    
 if __name__ == "__main__":
     individuals = np.eye(8).astype(np.int64)
     aptitudeList = np.array([0.2,0.4,0.3,0.8,0.1])
